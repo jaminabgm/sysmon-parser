@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import json
+import sys
 import xml.etree.ElementTree as ET
 
 FIELDS = [
@@ -64,6 +66,24 @@ def event_matches(values, image=None, user=None, integrity_level=None, command_l
     return True
 
 
+def compute_stats(events):
+    # This stats feature is for quick triage to understand what's in a file before deep analysis
+    integrity_counts = {}
+    for event in events:
+        level = event.get("IntegrityLevel") or "Unknown"
+        integrity_counts[level] = integrity_counts.get(level, 0) + 1
+
+    images = sorted({event["Image"] for event in events if event.get("Image")})
+    users = sorted({event["User"] for event in events if event.get("User")})
+
+    return {
+        "total_events": len(events),
+        "unique_images": {"count": len(images), "values": images},
+        "unique_users": {"count": len(users), "values": users},
+        "events_by_integrity_level": integrity_counts,
+    }
+
+
 def build_arg_parser():
     parser = argparse.ArgumentParser(
         description="Parse Sysmon XML event log(s) to JSON."
@@ -79,6 +99,12 @@ def build_arg_parser():
     parser.add_argument("--command-line", metavar="SUBSTR[,SUBSTR...]",
                          help="Only include events whose CommandLine contains any of the "
                               "given comma-separated substrings (case-insensitive)")
+    parser.add_argument("--format", choices=["json", "jsonl", "csv"], default="json",
+                         help="Output format: json (default), jsonl (one object per line), "
+                              "or csv (with headers)")
+    parser.add_argument("--stats", action="store_true",
+                         help="Print summary statistics (total events, unique images/users, "
+                              "counts by IntegrityLevel) instead of the events themselves")
     return parser
 
 
@@ -88,16 +114,33 @@ def main():
     tree = ET.parse(args.path)
     root = tree.getroot()
 
-    if strip_ns(root.tag) == "Events":
-        events = [parse_event(e) for e in root if strip_ns(e.tag) == "Event"]
-        filtered = [v for v in events
-                    if event_matches(v, args.image, args.user, args.integrity_level, args.command_line)]
-        print(json.dumps(filtered, indent=2))
+    is_multi = strip_ns(root.tag) == "Events"
+    if is_multi:
+        raw_events = [parse_event(e) for e in root if strip_ns(e.tag) == "Event"]
     else:
-        values = parse_event(root)
-        matches = event_matches(values, args.image, args.user, args.integrity_level, args.command_line)
-        result = values if matches else None
-        print(json.dumps(result, indent=2))
+        raw_events = [parse_event(root)]
+
+    filtered = [v for v in raw_events
+                if event_matches(v, args.image, args.user, args.integrity_level, args.command_line)]
+
+    if args.stats:
+        print(json.dumps(compute_stats(filtered), indent=2))
+    elif args.format == "jsonl":
+        for event in filtered:
+            print(json.dumps(event))
+    elif args.format == "csv":
+        writer = csv.DictWriter(sys.stdout, fieldnames=FIELDS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(filtered)
+    else:
+        # json: preserve the original single-object-vs-array contract based on
+        # the source root shape, rather than always flattening to a list like
+        # jsonl/csv do.
+        if is_multi:
+            print(json.dumps(filtered, indent=2))
+        else:
+            result = filtered[0] if filtered else None
+            print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
