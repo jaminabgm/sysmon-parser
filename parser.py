@@ -75,11 +75,13 @@ def compute_stats(events):
 
     images = sorted({event["Image"] for event in events if event.get("Image")})
     users = sorted({event["User"] for event in events if event.get("User")})
+    parent_images = sorted({event["ParentImage"] for event in events if event.get("ParentImage")})
 
     return {
         "total_events": len(events),
         "unique_images": {"count": len(images), "values": images},
         "unique_users": {"count": len(users), "values": users},
+        "unique_parent_images": {"count": len(parent_images), "values": parent_images},
         "events_by_integrity_level": integrity_counts,
     }
 
@@ -103,8 +105,9 @@ def build_arg_parser():
                          help="Output format: json (default), jsonl (one object per line), "
                               "or csv (with headers)")
     parser.add_argument("--stats", action="store_true",
-                         help="Print summary statistics (total events, unique images/users, "
-                              "counts by IntegrityLevel) instead of the events themselves")
+                         help="Print summary statistics (total events, unique images/users/"
+                              "parent images, counts by IntegrityLevel) instead of the events "
+                              "themselves")
     return parser
 
 
