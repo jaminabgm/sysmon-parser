@@ -15,6 +15,12 @@ It handles two input shapes:
 It also supports filtering events by four optional flags: `--image`,
 `--user`, `--integrity-level`, `--command-line`.
 
+Two more flags control what's actually printed:
+- `--format {json,jsonl,csv}` — choose the output shape.
+- `--stats` — print a summary (total events, unique images/users, counts
+  by IntegrityLevel) instead of the events themselves. Intended for quick
+  triage of a file's contents before deeper analysis.
+
 Sample data lives in `samples/`:
 - `event1.xml` — a single `whoami /groups` event.
 - `multi_events.xml` — three events (`whoami`, `net view /domain`, and
@@ -46,12 +52,28 @@ python3 parser.py samples/multi_events.xml --command-line=-enc,encoded
 # Combine filters — all given flags must match (AND across flags)
 python3 parser.py samples/multi_events.xml --image powershell --integrity-level high
 
+# One JSON object per line, for streaming/piping (e.g. into jq)
+python3 parser.py samples/multi_events.xml --format jsonl
+
+# CSV with headers
+python3 parser.py samples/multi_events.xml --format csv
+
+# Summary stats instead of events — composes with any of the filters above
+python3 parser.py samples/multi_events.xml --stats
+python3 parser.py samples/multi_events.xml --stats --integrity-level high
+
 python3 parser.py --help
 ```
 
-Output contract: the script always prints valid JSON.
-- Multi-event input with no matches → `[]`.
-- Single-event input with no match → `null`.
+Output contract: the script always prints valid JSON in `json`/`jsonl`/`--stats`
+modes (`csv` obviously doesn't apply here).
+- `--format json` (default): multi-event input with no matches → `[]`;
+  single-event input with no match → `null`.
+- `--format jsonl`/`csv`: always flatten to zero-or-more rows, regardless of
+  whether the source was a single `<Event>` or an `<Events>` file — a
+  no-match filter just means zero lines/rows (plus the header row for csv).
+- `--stats`: always a single JSON object, computed over whatever events
+  survive the active filters.
 
 ## What's left to do
 
@@ -104,3 +126,14 @@ Output contract: the script always prints valid JSON.
   the `http://schemas.microsoft.com/win/2004/08/events/event` namespace on
   every element, so tags need namespace stripping before comparing against
   plain strings like `"System"` or `"EventData"`.
+- **`jsonl`/`csv` always flatten to a list, `json` keeps its original
+  contract** — `jsonl` and `csv` are inherently "zero or more rows" formats,
+  so there's no ambiguity to preserve for them. `json` keeps the
+  single-object-vs-array distinction based on the source root shape, for
+  backward compatibility with earlier callers.
+- **`--stats` computes over the already-filtered event set, always as JSON**
+  — filtering happens first so stats compose naturally with `--image`/
+  `--user`/etc. (e.g. "how many High-integrity PowerShell launches are in
+  this file"). Always JSON regardless of `--format`, since a stats summary
+  isn't event-shaped — csv/jsonl don't apply to a single fixed-structure
+  object.
