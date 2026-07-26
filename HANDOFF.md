@@ -17,9 +17,10 @@ It also supports filtering events by four optional flags: `--image`,
 
 Two more flags control what's actually printed:
 - `--format {json,jsonl,csv}` — choose the output shape.
-- `--stats` — print a summary (total events, unique images/users, counts
-  by IntegrityLevel) instead of the events themselves. Intended for quick
-  triage of a file's contents before deeper analysis.
+- `--stats` — print a summary (total events, unique images/users/parent
+  images/computers, counts by IntegrityLevel) instead of the events
+  themselves. Intended for quick triage of a file's contents before
+  deeper analysis.
 
 Sample data lives in `samples/`:
 - `event1.xml` — a single `whoami /groups` event.
